@@ -15,6 +15,7 @@ EXAMPLE (reference project – basketball shots)
     COLUMN_TYPES = {"PLAYER_NAME": str, "SHOT_MADE": bool, "SHOT_DISTANCE": int}
 """
 import csv
+from pathlib import Path
 # ---------------------------------------------------------------------------
 # Folders of the project (this file lives in <project>/src/)
 # ---------------------------------------------------------------------------
@@ -154,7 +155,6 @@ def get_column(rows, name, skip_missing=True):
 # ===========================================================================
 # PART B – YOUR PROJECT SETTINGS (fill in during Lab 2)
 # ===========================================================================
-from pathlib import Path
 DATA_FILE_NAME = "student-portugales.csv"     # the exact name of your file in data/raw/
 
 # The columns you need for your question and their types (str, int, float, bool).

@@ -1,0 +1,176 @@
+"""loader.py – Lab 2: get the raw data into Python.
+
+WHAT GOES HERE
+    Everything needed to turn the raw data file into Python data structures:
+    reading the file, choosing the columns you need and converting text to
+    numbers / True-False.
+
+    PART A – ready-made helpers. Do not change them. From Lab 3 on you will
+             write functions like these yourself.
+    PART B – YOUR PROJECT SETTINGS. Fill them in during Lab 2: the name of
+             your data file and the columns you use, with their types.
+
+EXAMPLE (reference project – basketball shots)
+    DATA_FILE_NAME = "nba_shots_2024_25.csv"
+    COLUMN_TYPES = {"PLAYER_NAME": str, "SHOT_MADE": bool, "SHOT_DISTANCE": int}
+"""
+import csv
+from pathlib import Path
+# ---------------------------------------------------------------------------
+# Folders of the project (this file lives in <project>/src/)
+# ---------------------------------------------------------------------------
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+RAW_DIR = PROJECT_DIR / "data" / "raw"
+PROCESSED_DIR = PROJECT_DIR / "data" / "processed"
+
+# ===========================================================================
+# PART A – ready-made helpers (do not change)
+# ===========================================================================
+_ENCODINGS = ("utf-8-sig", "cp1250", "latin-1")
+_MISSING = {"", "na", "n/a", "nan", "none", "null", "-", "?"}
+
+
+def _detect_delimiter(header_line):
+    """Pick the separator that splits the header line into the most columns."""
+    candidates = [",", ";", "\t", "|"]
+    counts = {sep: header_line.count(sep) for sep in candidates}
+    best = max(counts, key=counts.get)
+    return best if counts[best] > 0 else ","
+
+
+def load_csv(path, delimiter=None, encoding=None):
+    """Read a CSV file and return a list of rows (one dictionary per row).
+
+    All values are returned as text (str). Column names are stripped of spaces.
+    path      -- file name inside data/raw/ (e.g. "my_data.csv") or a full path
+    delimiter -- None = detect automatically (",", ";", tab or "|")
+    encoding  -- None = try UTF-8, then cp1250 (Polish Excel), then latin-1
+    """
+    path = Path(path)
+    if not path.is_absolute() and not path.exists():
+        path = RAW_DIR / path
+    if not path.exists():
+        available = sorted(p.name for p in RAW_DIR.glob("*") if p.name != "README.md") if RAW_DIR.exists() else []
+        raise FileNotFoundError(
+            f"File not found: {path}\nFiles in data/raw/: {available}\n"
+            "Check the name (capital letters, .csv at the end)."
+        )
+    if path.suffix.lower() in (".gsheet", ".xlsx", ".xls"):
+        raise ValueError(
+            f"{path.name} is not a CSV file. Open it in Google Sheets / Excel and use "
+            "File -> Download -> Comma-separated values (.csv), then upload the .csv."
+        )
+
+    encodings = (encoding,) if encoding else _ENCODINGS
+    for enc in encodings:
+        try:
+            text = path.read_text(encoding=enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise UnicodeDecodeError("csv", b"", 0, 1, f"cannot decode {path.name}")
+
+    lines = text.splitlines()
+    if not lines:
+        return []
+    sep = delimiter or _detect_delimiter(lines[0])
+    reader = csv.DictReader(lines, delimiter=sep)
+    reader.fieldnames = [name.strip() for name in reader.fieldnames]
+    rows = []
+    for row in reader:
+        if any(value not in (None, "") for value in row.values()):
+            rows.append({key: (value or "").strip() for key, value in row.items() if key})
+    return rows
+
+
+def save_csv(rows, path):
+    """Save a list of dictionaries as a CSV file (creates the folder if needed)."""
+    path = Path(path)
+    if not path.is_absolute():
+        path = RAW_DIR / path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    return path
+
+
+def to_number(text):
+    """'1,5' -> 1.5 · '26' -> 26.0 · '' or 'NA' -> None · 'abc' -> None"""
+    if text is None:
+        return None
+    if isinstance(text, (int, float)):
+        return float(text)
+    text = str(text).strip().replace(" ", "").replace(",", ".")
+    if text.lower() in _MISSING:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def to_bool(text):
+    """'True', 'yes', '1', 't' -> True · 'False', 'no', '0', 'f' -> False · other -> None"""
+    value = str(text).strip().lower()
+    if value in ("true", "t", "yes", "y", "1"):
+        return True
+    if value in ("false", "f", "no", "n", "0"):
+        return False
+    return None
+
+
+def _convert(value, kind):
+    if kind is bool:
+        return to_bool(value)
+    if kind is int:
+        number = to_number(value)
+        return None if number is None else int(number)
+    if kind is float:
+        return to_number(value)
+    text = str(value).strip()
+    return None if text.lower() in _MISSING else text
+
+
+def convert_rows(rows, column_types):
+    """Keep only the columns from column_types and convert their values.
+
+    column_types -- dictionary {column name: type}, type is str, int, float or bool
+    Values that cannot be converted become None.
+    """
+    missing = [name for name in column_types if rows and name not in rows[0]]
+    if missing:
+        raise KeyError(f"Columns not in the data: {missing}. Available: {list(rows[0])}")
+    return [{name: _convert(row[name], kind) for name, kind in column_types.items()} for row in rows]
+
+
+def get_column(rows, name, skip_missing=True):
+    """Return the values of one column as a list (None values skipped by default)."""
+    values = [row[name] for row in rows]
+    return [v for v in values if v is not None] if skip_missing else values
+
+
+# ===========================================================================
+# PART B – YOUR PROJECT SETTINGS (fill in during Lab 2)
+# ===========================================================================
+DATA_FILE_NAME = "student-portugales.csv"     # the exact name of your file in data/raw/
+
+# The columns you need for your question and their types (str, int, float, bool).
+# Explain WHY you chose each column in docs/data_dictionary.md.
+# Example (basketball): {"PLAYER_NAME": str, "SHOT_MADE": bool, "SHOT_DISTANCE": int}
+COLUMN_TYPES = {"address" : str,
+ "famsize" : str,
+ "Medu": int,
+ "Fedu": int,
+ "studytime":int,
+ "schoolsup":bool,
+ "Walc":int,
+ "absences":int,
+ "G3":int}
+
+
+def load_project_data():
+    """Read the project data file and return converted rows."""
+    return convert_rows(load_csv(DATA_FILE_NAME), COLUMN_TYPES)
